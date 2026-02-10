@@ -17,7 +17,9 @@ import arc.struct.Seq;
 import arc.util.Align;
 import arc.util.Interval;
 import arc.util.Log;
+import arc.util.Time;
 import arc.util.pooling.Pools;
+import betterprojectoroverlay.GithubUpdateCheck;
 import mindustry.content.Blocks;
 import mindustry.game.EventType;
 import mindustry.gen.Building;
@@ -59,6 +61,7 @@ public class BetterProjectorOverlayFeature {
     private static final int idScan = 1;
 
     private static final float settingsRefreshTime = 0.5f;
+    private static final float previewRefreshTicks = 8f;
 
     private static boolean inited;
 
@@ -85,6 +88,9 @@ public class BetterProjectorOverlayFeature {
     private static final MindustryXMarkers xMarkers = new MindustryXMarkers();
 
     private static boolean forceRescan = true;
+    private static int lastPreviewTile = Integer.MIN_VALUE;
+    private static Block lastPreviewBlock;
+    private static float nextPreviewComputeAt;
 
     public static void init() {
         if (inited) return;
@@ -111,6 +117,7 @@ public class BetterProjectorOverlayFeature {
             graphCurrentBalance.clear();
             graphDelta.clear();
             forceRescan = true;
+            resetPreviewCache();
         });
 
         Events.on(EventType.BlockBuildEndEvent.class, e -> forceRescan = true);
@@ -141,6 +148,8 @@ public class BetterProjectorOverlayFeature {
         table.sliderPref(keyScanInterval, 8, 1, 30, 1, i -> i + "s");
         table.sliderPref(keyPreviewTextScale, 125, 60, 260, 5, i -> i + "%");
         table.sliderPref(keyPreviewTextAlpha, 100, 20, 100, 5, i -> i + "%");
+        table.checkPref(GithubUpdateCheck.enabledKey(), true);
+        table.checkPref(GithubUpdateCheck.showDialogKey(), true);
 
         refreshSettings();
     }
@@ -158,13 +167,47 @@ public class BetterProjectorOverlayFeature {
     private static void updatePlacementPreview() {
         if (!enabled || !previewEnabled) {
             preview.reset();
+            resetPreviewCache();
             return;
         }
         if (state == null || !state.isGame() || world == null || world.isGenerating() || player == null) {
             preview.reset();
+            resetPreviewCache();
             return;
         }
-        computePlacementPreview();
+
+        if (control == null || control.input == null) {
+            preview.reset();
+            resetPreviewCache();
+            return;
+        }
+
+        Block block = control.input.block;
+        if (!(block instanceof OverdriveProjector)) {
+            preview.reset();
+            resetPreviewCache();
+            return;
+        }
+
+        if (world == null || world.width() <= 0 || world.height() <= 0) {
+            preview.reset();
+            resetPreviewCache();
+            return;
+        }
+
+        int tx = Mathf.clamp((int) (Core.input.mouseWorldX() / tilesize), 0, world.width() - 1);
+        int ty = Mathf.clamp((int) (Core.input.mouseWorldY() / tilesize), 0, world.height() - 1);
+        int packed = tx + ty * world.width();
+
+        if (packed == lastPreviewTile && block == lastPreviewBlock && Time.time < nextPreviewComputeAt) {
+            return;
+        }
+
+        lastPreviewTile = packed;
+        lastPreviewBlock = block;
+        nextPreviewComputeAt = Time.time + previewRefreshTicks;
+
+        computePlacementPreview(tx, ty, (OverdriveProjector) block);
     }
 
     private static void drawPlacementPredictionWorld() {
@@ -222,21 +265,13 @@ public class BetterProjectorOverlayFeature {
         Pools.free(layout);
     }
 
-    private static PlacementPreview computePlacementPreview() {
+    private static PlacementPreview computePlacementPreview(int tx, int ty, OverdriveProjector projector) {
         preview.reset();
 
-        if (control == null || control.input == null) return preview;
-        Block block = control.input.block;
-        if (!(block instanceof OverdriveProjector)) return preview;
         if (world == null || world.width() <= 0 || world.height() <= 0) return preview;
 
-        int tx = Mathf.clamp((int) (Core.input.mouseWorldX() / tilesize), 0, world.width() - 1);
-        int ty = Mathf.clamp((int) (Core.input.mouseWorldY() / tilesize), 0, world.height() - 1);
-
-        OverdriveProjector projector = (OverdriveProjector) block;
-
-        float placeX = tx * tilesize + block.offset;
-        float placeY = ty * tilesize + block.offset;
+        float placeX = tx * tilesize + projector.offset;
+        float placeY = ty * tilesize + projector.offset;
         float range = Math.max(1f, projector.range);
         float boost = Math.max(1f, projector.speedBoost);
 
@@ -287,6 +322,12 @@ public class BetterProjectorOverlayFeature {
         preview.positive = preview.balance >= 0f;
 
         return preview;
+    }
+
+    private static void resetPreviewCache() {
+        lastPreviewTile = Integer.MIN_VALUE;
+        lastPreviewBlock = null;
+        nextPreviewComputeAt = 0f;
     }
 
     private static float estimatePowerDeltaPerSecond(Building b, float newBoost) {

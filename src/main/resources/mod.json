@@ -2,9 +2,9 @@
   "name": "betterprojectoroverlay",
   "displayName": "BetterProjectorOverlay",
   "author": "DeterMination",
-  "version": "v1.1.0",
+  "version": "v1.2.0",
   "minGameVersion": 154,
-  "description": "Client-side helper for overdrive projector conflicts: placement balance preview, MindustryX map marks, and deduplicated chat hints.",
+  "description": "Predict overdrive placement impact on power balance, scan and mark conflicting projectors, and provide optional chat/map warnings. / 预判超速投影放置后的电网盈亏，扫描并标记冲突投影，支持聊天与地图提示。",
   "main": "betterprojectoroverlay.BetterProjectorOverlayMod",
   "hidden": true,
   "java": true
