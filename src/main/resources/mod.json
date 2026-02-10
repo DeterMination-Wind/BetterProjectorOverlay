@@ -2,7 +2,7 @@
   "name": "betterprojectoroverlay",
   "displayName": "BetterProjectorOverlay",
   "author": "DeterMination",
-  "version": "v1.0.4",
+  "version": "v1.0.5",
   "minGameVersion": 154,
   "description": "Client-side helper for overdrive projector conflicts: placement balance preview, MindustryX map marks, and deduplicated chat hints.",
   "main": "betterprojectoroverlay.BetterProjectorOverlayMod",

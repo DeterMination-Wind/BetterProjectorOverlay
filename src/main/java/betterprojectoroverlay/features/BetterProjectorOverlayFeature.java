@@ -17,7 +17,6 @@ import arc.struct.Seq;
 import arc.util.Align;
 import arc.util.Interval;
 import arc.util.Log;
-import arc.util.Tmp;
 import arc.util.pooling.Pools;
 import mindustry.content.Blocks;
 import mindustry.game.EventType;
@@ -40,6 +39,7 @@ import java.util.Locale;
 import static mindustry.Vars.control;
 import static mindustry.Vars.net;
 import static mindustry.Vars.player;
+import static mindustry.Vars.renderer;
 import static mindustry.Vars.state;
 import static mindustry.Vars.tilesize;
 import static mindustry.Vars.ui;
@@ -125,7 +125,6 @@ public class BetterProjectorOverlayFeature {
         });
 
         Events.run(EventType.Trigger.draw, BetterProjectorOverlayFeature::drawPlacementPredictionWorld);
-        Events.run(EventType.Trigger.uiDrawEnd, BetterProjectorOverlayFeature::drawPlacementTextUi);
     }
 
     public static void buildSettings(SettingsMenuDialog.SettingsTable table) {
@@ -170,24 +169,19 @@ public class BetterProjectorOverlayFeature {
         Draw.color(mainColor);
         Lines.stroke(Scl.scl(1.6f));
         Lines.circle(p.worldX, p.worldY, p.range);
+        drawPlacementTextWorld(p, mainColor);
         Draw.reset();
     }
 
-    private static void drawPlacementTextUi() {
-        PlacementPreview p = preview;
-        if (!p.active) return;
-
-        Color mainColor = p.positive ? Pal.heal : Color.scarlet;
-        drawPlacementText(p, mainColor);
-    }
-
-    private static void drawPlacementText(PlacementPreview p, Color color) {
+    private static void drawPlacementTextWorld(PlacementPreview p, Color color) {
         Font font = Fonts.outline;
         GlyphLayout layout = Pools.obtain(GlyphLayout.class, GlyphLayout::new);
         boolean ints = font.usesIntegerPositions();
         font.setUseIntegerPositions(false);
 
-        float scale = 0.85f / Scl.scl(1f);
+        float prevScale = font.getScaleX();
+        float displayScale = renderer == null ? 1f : Math.max(0.0001f, renderer.getDisplayScale());
+        float scale = 0.8f / displayScale;
         font.getData().setScale(scale);
 
         String stateText;
@@ -200,12 +194,10 @@ public class BetterProjectorOverlayFeature {
         }
 
         layout.setText(font, stateText);
-        Vec2 screen = Core.camera.project(Tmp.v1.set(p.worldX, p.worldY + p.range + 10f));
-        float sceneScaleX = Core.scene.getWidth() / Math.max(1f, Core.graphics.getWidth());
-        float sceneScaleY = Core.scene.getHeight() / Math.max(1f, Core.graphics.getHeight());
-        float sx = screen.x * sceneScaleX;
-        float sy = screen.y * sceneScaleY;
+        float sx = p.worldX;
+        float sy = p.worldY + p.range + Math.max(tilesize * 0.7f, layout.height * 0.7f);
 
+        Draw.z(Layer.overlayUI + 1f);
         Draw.color(0f, 0f, 0f, 0.42f);
         Fill.rect(sx, sy, layout.width + Scl.scl(12f), layout.height + Scl.scl(8f));
         Draw.color();
@@ -213,7 +205,7 @@ public class BetterProjectorOverlayFeature {
         font.setColor(color);
         font.draw(stateText, sx, sy + layout.height / 2f, 0f, Align.center, false);
 
-        font.getData().setScale(1f);
+        font.getData().setScale(prevScale);
         font.setColor(Color.white);
         font.setUseIntegerPositions(ints);
         Pools.free(layout);
