@@ -51,6 +51,8 @@ public class BetterProjectorOverlayFeature {
     private static final String keyMarkerEnabled = "bpo-marker-enabled";
     private static final String keyChatEnabled = "bpo-chat-enabled";
     private static final String keyScanInterval = "bpo-scan-interval";
+    private static final String keyPreviewTextScale = "bpo-preview-text-scale";
+    private static final String keyPreviewTextAlpha = "bpo-preview-text-alpha";
 
     private static final Interval interval = new Interval(4);
     private static final int idSettings = 0;
@@ -65,6 +67,8 @@ public class BetterProjectorOverlayFeature {
     private static boolean markerEnabled;
     private static boolean chatEnabled;
     private static float scanIntervalSeconds;
+    private static float previewTextScale;
+    private static float previewTextAlpha;
 
     private static final PlacementPreview preview = new PlacementPreview();
 
@@ -92,6 +96,8 @@ public class BetterProjectorOverlayFeature {
             Core.settings.defaults(keyMarkerEnabled, true);
             Core.settings.defaults(keyChatEnabled, false);
             Core.settings.defaults(keyScanInterval, 8);
+            Core.settings.defaults(keyPreviewTextScale, 125);
+            Core.settings.defaults(keyPreviewTextAlpha, 100);
 
             xMarkers.tryInit();
             refreshSettings();
@@ -133,6 +139,8 @@ public class BetterProjectorOverlayFeature {
         table.checkPref(keyMarkerEnabled, true);
         table.checkPref(keyChatEnabled, false);
         table.sliderPref(keyScanInterval, 8, 1, 30, 1, i -> i + "s");
+        table.sliderPref(keyPreviewTextScale, 125, 60, 260, 5, i -> i + "%");
+        table.sliderPref(keyPreviewTextAlpha, 100, 20, 100, 5, i -> i + "%");
 
         refreshSettings();
     }
@@ -143,6 +151,8 @@ public class BetterProjectorOverlayFeature {
         markerEnabled = Core.settings.getBool(keyMarkerEnabled, true);
         chatEnabled = Core.settings.getBool(keyChatEnabled, false);
         scanIntervalSeconds = Mathf.clamp(Core.settings.getInt(keyScanInterval, 8), 1f, 30f);
+        previewTextScale = Mathf.clamp(Core.settings.getInt(keyPreviewTextScale, 125), 60f, 260f) / 100f;
+        previewTextAlpha = Mathf.clamp(Core.settings.getInt(keyPreviewTextAlpha, 100), 20f, 100f) / 100f;
     }
 
     private static void updatePlacementPreview() {
@@ -181,7 +191,7 @@ public class BetterProjectorOverlayFeature {
 
         float prevScale = font.getScaleX();
         float displayScale = renderer == null ? 1f : Math.max(0.0001f, renderer.getDisplayScale());
-        float scale = 0.8f / displayScale;
+        float scale = 0.8f * previewTextScale / displayScale;
         font.getData().setScale(scale);
 
         String stateText;
@@ -198,11 +208,12 @@ public class BetterProjectorOverlayFeature {
         float sy = p.worldY + p.range + Math.max(tilesize * 0.7f, layout.height * 0.7f);
 
         Draw.z(Layer.overlayUI + 1f);
-        Draw.color(0f, 0f, 0f, 0.42f);
+        float bgAlpha = Mathf.clamp(0.12f + previewTextAlpha * 0.32f, 0.12f, 0.5f);
+        Draw.color(0f, 0f, 0f, bgAlpha);
         Fill.rect(sx, sy, layout.width + Scl.scl(12f), layout.height + Scl.scl(8f));
         Draw.color();
 
-        font.setColor(color);
+        font.setColor(color.r, color.g, color.b, previewTextAlpha);
         font.draw(stateText, sx, sy + layout.height / 2f, 0f, Align.center, false);
 
         font.getData().setScale(prevScale);
