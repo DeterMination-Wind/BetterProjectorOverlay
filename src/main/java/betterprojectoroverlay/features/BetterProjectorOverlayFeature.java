@@ -266,18 +266,13 @@ public class BetterProjectorOverlayFeature {
         int graphCount = touchedGraphs.size;
 
         if (graphCount > 0) {
+            preview.balance = 0f;
             touchedGraphs.each(id -> {
                 float current = graphCurrentBalance.get(id, 0f);
                 float delta = graphDelta.get(id, 0f);
                 float predicted = current + delta;
-                if (predicted < preview.balance) {
-                    preview.balance = predicted;
-                }
+                preview.balance += predicted;
             });
-
-            if (preview.balance == Float.POSITIVE_INFINITY || preview.balance == Float.NEGATIVE_INFINITY) {
-                preview.balance = 0f;
-            }
         } else {
             preview.balance = 0f;
         }
