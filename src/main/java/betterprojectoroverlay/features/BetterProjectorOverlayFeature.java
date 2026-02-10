@@ -202,14 +202,18 @@ public class BetterProjectorOverlayFeature {
 
         layout.setText(font, stateText);
         Vec2 screen = Core.camera.project(Tmp.v1.set(p.worldX, p.worldY + p.range + 10f));
+        float sceneScaleX = Core.scene.getWidth() / Math.max(1f, Core.graphics.getWidth());
+        float sceneScaleY = Core.scene.getHeight() / Math.max(1f, Core.graphics.getHeight());
+        float sx = screen.x * sceneScaleX;
+        float sy = screen.y * sceneScaleY;
 
         Draw.z(Drawf.text() + 1f);
         Draw.color(0f, 0f, 0f, 0.42f);
-        Fill.rect(screen.x, screen.y, layout.width + Scl.scl(12f), layout.height + Scl.scl(8f));
+        Fill.rect(sx, sy, layout.width + Scl.scl(12f), layout.height + Scl.scl(8f));
         Draw.color();
 
         font.setColor(color);
-        font.draw(stateText, screen.x, screen.y + layout.height / 2f, 0f, Align.center, false);
+        font.draw(stateText, sx, sy + layout.height / 2f, 0f, Align.center, false);
 
         font.getData().setScale(1f);
         font.setColor(Color.white);
