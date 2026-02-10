@@ -24,7 +24,6 @@ import mindustry.game.EventType;
 import mindustry.gen.Building;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
-import mindustry.graphics.Drawf;
 import mindustry.graphics.Layer;
 import mindustry.graphics.Pal;
 import mindustry.logic.Ranged;
@@ -207,7 +206,6 @@ public class BetterProjectorOverlayFeature {
         float sx = screen.x * sceneScaleX;
         float sy = screen.y * sceneScaleY;
 
-        Draw.z(Drawf.text() + 1f);
         Draw.color(0f, 0f, 0f, 0.42f);
         Fill.rect(sx, sy, layout.width + Scl.scl(12f), layout.height + Scl.scl(8f));
         Draw.color();
