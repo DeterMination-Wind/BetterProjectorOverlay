@@ -10,17 +10,13 @@ import arc.graphics.g2d.GlyphLayout;
 import arc.graphics.g2d.Lines;
 import arc.math.Mathf;
 import arc.math.geom.Vec2;
-import arc.scene.Element;
-import arc.scene.event.Touchable;
 import arc.scene.ui.layout.Scl;
-import arc.scene.ui.layout.Table;
 import arc.struct.IntFloatMap;
 import arc.struct.IntSet;
 import arc.struct.Seq;
 import arc.util.Align;
 import arc.util.Interval;
 import arc.util.Log;
-import arc.util.Time;
 import arc.util.Tmp;
 import arc.util.pooling.Pools;
 import mindustry.content.Blocks;
@@ -51,21 +47,17 @@ import static mindustry.Vars.ui;
 import static mindustry.Vars.world;
 
 public class BetterProjectorOverlayFeature {
-    private static final String overlayName = "bpo-overlay";
-
     private static final String keyEnabled = "bpo-enabled";
     private static final String keyPreviewEnabled = "bpo-preview-enabled";
     private static final String keyMarkerEnabled = "bpo-marker-enabled";
     private static final String keyChatEnabled = "bpo-chat-enabled";
     private static final String keyScanInterval = "bpo-scan-interval";
 
-    private static final Interval interval = new Interval(6);
+    private static final Interval interval = new Interval(4);
     private static final int idSettings = 0;
-    private static final int idAttach = 1;
-    private static final int idScan = 2;
+    private static final int idScan = 1;
 
     private static final float settingsRefreshTime = 0.5f;
-    private static final float attachRefreshTime = 1f;
 
     private static boolean inited;
 
@@ -95,11 +87,6 @@ public class BetterProjectorOverlayFeature {
         if (inited) return;
         inited = true;
 
-        if (ui != null && ui.hudGroup != null) {
-            Element old = ui.hudGroup.find(overlayName);
-            if (old != null) old.remove();
-        }
-
         Events.on(EventType.ClientLoadEvent.class, e -> {
             Core.settings.defaults(keyEnabled, true);
             Core.settings.defaults(keyPreviewEnabled, true);
@@ -109,7 +96,6 @@ public class BetterProjectorOverlayFeature {
 
             xMarkers.tryInit();
             refreshSettings();
-            ensureOverlayAttached();
             forceRescan = true;
         });
 
@@ -130,7 +116,7 @@ public class BetterProjectorOverlayFeature {
 
         Events.run(EventType.Trigger.update, () -> {
             if (interval.check(idSettings, settingsRefreshTime)) refreshSettings();
-            if (interval.check(idAttach, attachRefreshTime)) ensureOverlayAttached();
+            updatePlacementPreview();
 
             if (!enabled || !markerEnabled) return;
             if (forceRescan || interval.check(idScan, Math.max(1f, scanIntervalSeconds))) {
@@ -139,7 +125,8 @@ public class BetterProjectorOverlayFeature {
             }
         });
 
-        Events.run(EventType.Trigger.draw, BetterProjectorOverlayFeature::drawPlacementPrediction);
+        Events.run(EventType.Trigger.draw, BetterProjectorOverlayFeature::drawPlacementPredictionWorld);
+        Events.run(EventType.Trigger.uiDrawEnd, BetterProjectorOverlayFeature::drawPlacementTextUi);
     }
 
     public static void buildSettings(SettingsMenuDialog.SettingsTable table) {
@@ -160,31 +147,20 @@ public class BetterProjectorOverlayFeature {
         scanIntervalSeconds = Mathf.clamp(Core.settings.getInt(keyScanInterval, 8), 1f, 30f);
     }
 
-    private static void ensureOverlayAttached() {
-        if (ui == null || ui.hudGroup == null) return;
-        if (!Core.settings.getBool("minimap")) return;
-
-        Element minimap = ui.hudGroup.find("minimap");
-        if (!(minimap instanceof Table)) return;
-
-        Table table = (Table) minimap;
-        if (table.find(overlayName) != null) return;
-
-        if (table.getChildren().isEmpty()) return;
-        Element base = table.getChildren().get(0);
-
-        HudOverlay overlay = new HudOverlay(base);
-        overlay.name = overlayName;
-        overlay.touchable = Touchable.disabled;
-        table.addChild(overlay);
-        overlay.toFront();
+    private static void updatePlacementPreview() {
+        if (!enabled || !previewEnabled) {
+            preview.reset();
+            return;
+        }
+        if (state == null || !state.isGame() || world == null || world.isGenerating() || player == null) {
+            preview.reset();
+            return;
+        }
+        computePlacementPreview();
     }
 
-    private static void drawPlacementPrediction() {
-        if (!enabled || !previewEnabled) return;
-        if (state == null || !state.isGame() || world == null || world.isGenerating() || player == null) return;
-
-        PlacementPreview p = computePlacementPreview();
+    private static void drawPlacementPredictionWorld() {
+        PlacementPreview p = preview;
         if (!p.active) return;
 
         Color mainColor = p.positive ? Pal.heal : Color.scarlet;
@@ -196,7 +172,13 @@ public class BetterProjectorOverlayFeature {
         Lines.stroke(Scl.scl(1.6f));
         Lines.circle(p.worldX, p.worldY, p.range);
         Draw.reset();
+    }
 
+    private static void drawPlacementTextUi() {
+        PlacementPreview p = preview;
+        if (!p.active) return;
+
+        Color mainColor = p.positive ? Pal.heal : Color.scarlet;
         drawPlacementText(p, mainColor);
     }
 
@@ -436,20 +418,6 @@ public class BetterProjectorOverlayFeature {
             Call.sendChatMessage(message);
         } else if (ui != null && ui.hudfrag != null) {
             ui.hudfrag.showToast("[scarlet]" + message + "[]");
-        }
-    }
-
-    private static class HudOverlay extends Element {
-        private final Element base;
-
-        HudOverlay(Element base) {
-            this.base = base;
-        }
-
-        @Override
-        public void act(float delta) {
-            if (base != null) setBounds(base.x, base.y, base.getWidth(), base.getHeight());
-            super.act(delta);
         }
     }
 
