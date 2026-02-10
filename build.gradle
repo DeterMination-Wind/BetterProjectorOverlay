@@ -1,0 +1,203 @@
+plugins {
+    id "java"
+}
+
+group = "betterprojectoroverlay"
+version = "v1.0.0"
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://jitpack.io" }
+}
+
+def mindustryVersion = (findProperty("mindustryVersion") ?: "v154.3").toString()
+
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == "com.github.Anuken.Arc" && details.requested.version == "ec5df18e54") {
+            details.useVersion(mindustryVersion)
+            details.because("Use JitPack Arc tag artifacts for stable dependency resolution")
+        }
+    }
+}
+
+dependencies {
+    compileOnly "com.github.Anuken.MindustryJitpack:core:$mindustryVersion"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    if (JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_1_9)) {
+        options.release.set(8)
+    }
+}
+
+jar {
+    archiveFileName = "betterProjectorOverlay.zip"
+}
+
+tasks.register("jarDesktop", Jar) {
+    group = "build"
+    description = "Packages a desktop .jar artifact for distribution convenience."
+    dependsOn tasks.named("classes")
+    archiveFileName = "betterProjectorOverlay.jar"
+    from(sourceSets.main.output)
+}
+
+tasks.register("jarAndroid", Jar) {
+    group = "build"
+    description = "Packages an Android .jar artifact with classes.dex."
+    archiveFileName = "betterProjectorOverlay-android.jar"
+    from(sourceSets.main.output.resourcesDir)
+}
+
+def isWindows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows")
+
+def findD8 = {
+    def explicit = System.getenv("D8_PATH")
+    if (explicit) {
+        def f = new File(explicit)
+        if (f.exists()) return f
+    }
+
+    def sdkRoot = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+    if (sdkRoot) {
+        def buildToolsDir = new File(sdkRoot, "build-tools")
+        if (buildToolsDir.isDirectory()) {
+            def toolName = isWindows ? "d8.bat" : "d8"
+            def candidates = (buildToolsDir.listFiles() ?: [])
+                .findAll { it.isDirectory() }
+                .sort { a, b -> b.name <=> a.name }
+
+            for (def dir : candidates) {
+                def exe = new File(dir, toolName)
+                if (exe.exists()) return exe
+            }
+        }
+    }
+
+    if (isWindows) {
+        def workspaceRoot = rootDir.parentFile
+        def matches = (workspaceRoot.listFiles() ?: [])
+            .findAll { it.isDirectory() && it.name.startsWith("commandlinetools-win-") }
+            .sort { a, b -> b.name <=> a.name }
+
+        for (def dir : matches) {
+            def exe = new File(dir, "cmdline-tools/bin/d8.bat")
+            if (exe.exists()) return exe
+        }
+    }
+
+    return null
+}
+
+def androidDexOutDir = layout.buildDirectory.dir("d8").get().asFile
+
+tasks.register("d8InputJar", Jar) {
+    group = "build"
+    description = "Builds a temporary input jar used by D8."
+    dependsOn tasks.named("classes")
+    archiveFileName = "${project.name}-d8-input.jar"
+    destinationDirectory = layout.buildDirectory.dir("d8-input")
+    from(sourceSets.main.output)
+}
+
+tasks.register("dexAndroid", Exec) {
+    group = "build"
+    description = "Compiles Java bytecode into classes.dex for Android mod loading."
+    dependsOn tasks.named("d8InputJar")
+
+    doFirst {
+        def d8 = findD8()
+        if (d8 == null) {
+            throw new GradleException("D8 not found. Set ANDROID_SDK_ROOT/ANDROID_HOME or D8_PATH.")
+        }
+
+        def sdkRoot = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+        def androidJar = null
+        if (sdkRoot) {
+            def platformRoot = new File("$sdkRoot/platforms/").listFiles()
+                ?.findAll { it.isDirectory() }
+                ?.sort { a, b -> b.name <=> a.name }
+                ?.find { f -> new File(f, "android.jar").exists() }
+            if (platformRoot) {
+                androidJar = new File(platformRoot, "android.jar")
+            }
+        }
+
+        delete(androidDexOutDir)
+        androidDexOutDir.mkdirs()
+
+        def programZip = tasks.named("d8InputJar").get().archiveFile.get().asFile
+
+        commandLine d8.absolutePath
+        args "--min-api", "14", "--release", "--output", androidDexOutDir.absolutePath
+
+        if (androidJar != null) {
+            args "--lib", androidJar.absolutePath
+            configurations.compileClasspath.files.each { f ->
+                args "--classpath", f.absolutePath
+            }
+        }
+
+        args programZip.absolutePath
+    }
+}
+
+tasks.named("jarAndroid").configure {
+    dependsOn tasks.named("dexAndroid")
+    from(androidDexOutDir) {
+        include "classes.dex"
+    }
+}
+
+def buildOutDir = new File(rootDir.parentFile, "构建/betterProjectorOverlay")
+
+tasks.register("copyZipToBuildDir", Copy) {
+    doNotTrackState("Copies zip artifact to workspace output folder")
+    dependsOn tasks.named("jar")
+    from(tasks.named("jar").flatMap { it.archiveFile })
+    into(buildOutDir)
+    rename { _ -> "betterProjectorOverlay-${project.version}.zip" }
+}
+
+tasks.register("copyJarToBuildDir", Copy) {
+    doNotTrackState("Copies desktop jar artifact to workspace output folder")
+    dependsOn tasks.named("jarDesktop")
+    from(tasks.named("jarDesktop").flatMap { it.archiveFile })
+    into(buildOutDir)
+    rename { _ -> "betterProjectorOverlay-${project.version}.jar" }
+}
+
+tasks.register("copyAndroidJarToBuildDir", Copy) {
+    doNotTrackState("Copies android jar artifact to workspace output folder")
+    dependsOn tasks.named("jarAndroid")
+    from(tasks.named("jarAndroid").flatMap { it.archiveFile })
+    into(buildOutDir)
+    rename { _ -> "betterProjectorOverlay-${project.version}-android.jar" }
+}
+
+tasks.named("jar").configure {
+    finalizedBy tasks.named("copyZipToBuildDir")
+}
+
+tasks.named("jarDesktop").configure {
+    finalizedBy tasks.named("copyJarToBuildDir")
+}
+
+tasks.named("jarAndroid").configure {
+    finalizedBy tasks.named("copyAndroidJarToBuildDir")
+}
+
+tasks.register("deploy") {
+    group = "build"
+    description = "Builds .zip/.jar/-android.jar and copies them to 构建 output directory."
+    dependsOn tasks.named("jar")
+    dependsOn tasks.named("jarDesktop")
+    dependsOn tasks.named("jarAndroid")
+}

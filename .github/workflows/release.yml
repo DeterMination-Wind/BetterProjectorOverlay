@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Resolve D8 path
+        shell: bash
+        run: |
+          D8_PATH="$(find "$ANDROID_HOME/build-tools" -type f -name d8 | sort -r | head -n 1)"
+          echo "D8_PATH=$D8_PATH" >> "$GITHUB_ENV"
+
+      - name: Build release artifacts
+        run: gradle deploy --no-daemon
+
+      - name: Rename artifacts with tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          cp build/libs/betterProjectorOverlay.zip "dist/betterProjectorOverlay-${tag}.zip"
+          cp build/libs/betterProjectorOverlay.jar "dist/betterProjectorOverlay-${tag}.jar"
+          cp build/libs/betterProjectorOverlay-android.jar "dist/betterProjectorOverlay-${tag}-android.jar"
+
+      - name: Extract changelog section
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib
+
+          tag = pathlib.os.environ["GITHUB_REF_NAME"]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          lines = text.splitlines()
+
+          start = None
+          for i, line in enumerate(lines):
+              if line.strip() == f"## {tag}":
+                  start = i + 1
+                  break
+
+          if start is None:
+              body = f"## {tag}\n\n- ✨ Release {tag}"
+          else:
+              end = len(lines)
+              for j in range(start, len(lines)):
+                  if lines[j].startswith("## "):
+                      end = j
+                      break
+              section = "\n".join(lines[start:end]).strip()
+              body = f"## {tag}\n\n{section}" if section else f"## {tag}\n\n- ✨ Release {tag}"
+
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            dist/*.zip
+            dist/*.jar
